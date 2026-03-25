@@ -70,3 +70,95 @@ CREATE INDEX idx_bookings_tourist_id ON public.bookings(tourist_id);
 CREATE INDEX idx_bookings_guide_id ON public.bookings(guide_id);
 CREATE INDEX idx_verification_user_id ON public.verification_requests(user_id);
 CREATE INDEX idx_reviews_guide_id ON public.reviews(guide_id);
+
+-- USER STORIES (BLOG/MOMENTS)
+CREATE TABLE public.stories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL, -- GFM Markdown
+  featured_image_url text,
+  tags text[] DEFAULT '{}',
+  likes_count integer DEFAULT 0 NOT NULL,
+  comments_count integer DEFAULT 0 NOT NULL,
+  is_published boolean DEFAULT true NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE public.story_likes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(story_id, user_id)
+);
+
+CREATE TABLE public.story_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  content text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- STORY INDEXES
+CREATE INDEX idx_stories_author_id ON public.stories(author_id);
+CREATE INDEX idx_story_likes_story_id ON public.story_likes(story_id);
+CREATE INDEX idx_story_comments_story_id ON public.story_comments(story_id);
+
+-- TRIGGERS FOR COUNTS
+CREATE OR REPLACE FUNCTION public.update_story_likes_count()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE public.stories SET likes_count = likes_count + 1 WHERE id = NEW.story_id;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE public.stories SET likes_count = likes_count - 1 WHERE id = OLD.story_id;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql security definer;
+
+CREATE TRIGGER on_story_like_change
+  AFTER INSERT OR DELETE ON public.story_likes
+  FOR EACH ROW EXECUTE FUNCTION public.update_story_likes_count();
+
+CREATE OR REPLACE FUNCTION public.update_story_comments_count()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE public.stories SET comments_count = comments_count + 1 WHERE id = NEW.story_id;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE public.stories SET comments_count = comments_count - 1 WHERE id = OLD.story_id;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql security definer;
+
+CREATE TRIGGER on_story_comment_change
+  AFTER INSERT OR DELETE ON public.story_comments
+  FOR EACH ROW EXECUTE FUNCTION public.update_story_comments_count();
+
+-- RLS POLICIES FOR STORIES
+ALTER TABLE public.stories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.story_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.story_comments ENABLE ROW LEVEL SECURITY;
+
+-- Stories: Read by everyone, write by author
+CREATE POLICY "Stories are publicly viewable" ON public.stories FOR SELECT USING (true);
+CREATE POLICY "Authors can insert stories" ON public.stories FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Authors can update own stories" ON public.stories FOR UPDATE USING (auth.uid() = author_id);
+CREATE POLICY "Authors can delete own stories" ON public.stories FOR DELETE USING (auth.uid() = author_id);
+
+-- Likes: Read by everyone, write by authenticated user
+CREATE POLICY "Story likes are publicly viewable" ON public.story_likes FOR SELECT USING (true);
+CREATE POLICY "Auth users can like stories" ON public.story_likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can unlike stories" ON public.story_likes FOR DELETE USING (auth.uid() = user_id);
+
+-- Comments: Read by everyone, write by authenticated user
+CREATE POLICY "Story comments are publicly viewable" ON public.story_comments FOR SELECT USING (true);
+CREATE POLICY "Auth users can comment on stories" ON public.story_comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own comments" ON public.story_comments FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own comments" ON public.story_comments FOR DELETE USING (auth.uid() = user_id);

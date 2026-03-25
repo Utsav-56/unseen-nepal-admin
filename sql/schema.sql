@@ -259,3 +259,93 @@ CREATE INDEX idx_bookings_tourist_id ON public.bookings(tourist_id);
 CREATE INDEX idx_bookings_guide_id ON public.bookings(guide_id);
 CREATE INDEX idx_verification_user_id ON public.verification_requests(user_id);
 CREATE INDEX idx_reviews_guide_id ON public.reviews(guide_id);
+
+--  USER STORIES SECTION
+-- Production-grade table for Markdown stories
+CREATE TABLE public.stories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL, -- GFM Markdown content
+  featured_image_url text, -- For story thumbnail
+  tags text[] DEFAULT '{}',
+  likes_count integer DEFAULT 0 NOT NULL,
+  comments_count integer DEFAULT 0 NOT NULL,
+  is_published boolean DEFAULT true NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Story Likes: Trust-based engagement
+CREATE TABLE public.story_likes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(story_id, user_id)
+);
+
+-- Story Comments: Community interaction
+CREATE TABLE public.story_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  content text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Story Performance Indexes
+CREATE INDEX idx_stories_author_id ON public.stories(author_id);
+CREATE INDEX idx_stories_is_published ON public.stories(is_published);
+CREATE INDEX idx_story_likes_story_id ON public.story_likes(story_id);
+CREATE INDEX idx_story_comments_story_id ON public.story_comments(story_id);
+
+-- AUTOMATION: Counts Management
+CREATE OR REPLACE FUNCTION public.manage_story_counts()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'story_likes' THEN
+    IF TG_OP = 'INSERT' THEN
+      UPDATE public.stories SET likes_count = likes_count + 1 WHERE id = NEW.story_id;
+    ELSIF TG_OP = 'DELETE' THEN
+      UPDATE public.stories SET likes_count = likes_count - 1 WHERE id = OLD.story_id;
+    END IF;
+  ELSIF TG_TABLE_NAME = 'story_comments' THEN
+    IF TG_OP = 'INSERT' THEN
+      UPDATE public.stories SET comments_count = comments_count + 1 WHERE id = NEW.story_id;
+    ELSIF TG_OP = 'DELETE' THEN
+      UPDATE public.stories SET comments_count = comments_count - 1 WHERE id = OLD.story_id;
+    END IF;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql security definer;
+
+CREATE TRIGGER on_story_like_change
+  AFTER INSERT OR DELETE ON public.story_likes
+  FOR EACH ROW EXECUTE FUNCTION public.manage_story_counts();
+
+CREATE TRIGGER on_story_comment_change
+  AFTER INSERT OR DELETE ON public.story_comments
+  FOR EACH ROW EXECUTE FUNCTION public.manage_story_counts();
+
+-- RLS: Security Policies
+ALTER TABLE public.stories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.story_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.story_comments ENABLE ROW LEVEL SECURITY;
+
+-- Stories: Publicly readable, restricted write
+CREATE POLICY "Stories are viewed by everyone" ON public.stories FOR SELECT USING (true);
+CREATE POLICY "Users can create stories" ON public.stories FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Authors manage own stories" ON public.stories FOR ALL USING (auth.uid() = author_id);
+
+-- Likes: Publicly readable, restricted write
+CREATE POLICY "Likes are viewed by everyone" ON public.story_likes FOR SELECT USING (true);
+CREATE POLICY "Users can like once" ON public.story_likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can unlike" ON public.story_likes FOR DELETE USING (auth.uid() = user_id);
+
+-- Comments: Publicly readable, restricted write
+CREATE POLICY "Comments are viewed by everyone" ON public.story_comments FOR SELECT USING (true);
+CREATE POLICY "Users can post comments" ON public.story_comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own comments" ON public.story_comments FOR ALL USING (auth.uid() = user_id);

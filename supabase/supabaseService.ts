@@ -84,7 +84,7 @@ class SupabaseStorageService {
  * T is the Entity type (e.g., Teacher)
  * C is the Create/Insert type (usually Omit<T, 'id' | 'created_at'>)
  */
-abstract class SupabaseService<T extends BaseEntity, C = Omit<T, keyof BaseEntity>> {
+export abstract class SupabaseService<T extends BaseEntity, C = Omit<T, keyof BaseEntity>> {
     protected tablename: string;
     protected storage = SupabaseStorageService.getInstance();
     protected validator: z.ZodType<T>;
