@@ -15,7 +15,7 @@ export async function updateSession(request: NextRequest) {
                     return request.cookies.getAll()
                 },
                 setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value, options))
+                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
                     supabaseResponse = NextResponse.next({
                         request,
                     })
@@ -34,7 +34,16 @@ export async function updateSession(request: NextRequest) {
 
     // Protected Admin Route
     if (request.nextUrl.pathname.startsWith('/admin') && !user) {
-        return NextResponse.redirect(new URL('/login', request.url))
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        const response = NextResponse.redirect(url)
+
+        // Copy refreshed cookies from supabaseResponse to the redirect response
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+            response.cookies.set(cookie)
+        })
+
+        return response
     }
 
     return supabaseResponse
