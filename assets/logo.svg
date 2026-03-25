@@ -1,0 +1,74 @@
+<svg width="900" height="450" viewBox="0 0 900 450" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <!-- Soft shadow -->
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="3" dy="6" stdDeviation="4" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- 3D gradient fills -->
+    <linearGradient id="red3d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff4d4d"/>
+      <stop offset="100%" stop-color="#b30000"/>
+    </linearGradient>
+
+    <linearGradient id="yellow3d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd54f"/>
+      <stop offset="100%" stop-color="#f4b400"/>
+    </linearGradient>
+
+    <linearGradient id="pink3d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff80ab"/>
+      <stop offset="100%" stop-color="#d81b60"/>
+    </linearGradient>
+
+    <linearGradient id="orange3d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb74d"/>
+      <stop offset="100%" stop-color="#e65100"/>
+    </linearGradient>
+
+    <linearGradient id="brown3d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8d6e63"/>
+      <stop offset="100%" stop-color="#3e2723"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Top text (Utsav) -->
+  <g font-family="Verdana, Arial Black, sans-serif" font-weight="900" font-size="130" filter="url(#shadow)">
+
+    <!-- Fake 3D extrusion (offset layer) -->
+    <g opacity="0.35">
+      <text x="82" y="162" fill="#990000">U</text>
+      <text x="182" y="162" fill="#c49000">t</text>
+      <text x="242" y="162" fill="#ad1457">s</text>
+      <text x="312" y="162" fill="#bf360c">a</text>
+      <text x="392" y="162" fill="#3e2723">v</text>
+    </g>
+
+    <!-- Front face -->
+    <text x="80"  y="150" fill="url(#red3d)">U</text>
+    <text x="180" y="150" fill="url(#yellow3d)">t</text>
+    <text x="240" y="150" fill="url(#pink3d)">s</text>
+    <text x="310" y="150" fill="url(#orange3d)">a</text>
+    <text x="390" y="150" fill="url(#brown3d)">v</text>
+  </g>
+
+  <!-- Bottom text (POKHREL) -->
+  <g font-family="Verdana, Arial Black, sans-serif" font-weight="900" font-size="95" filter="url(#shadow)">
+
+    <!-- shadow layer -->
+    <g opacity="0.25">
+      <text x="82"  y="312" fill="#000">POKHREL</text>
+    </g>
+
+    <!-- colorful text -->
+    <text x="80"  y="300" fill="#ff6f61">P</text>
+    <text x="150" y="300" fill="#ffd600">O</text>
+    <text x="220" y="300" fill="#ffd600">K</text>
+    <text x="300" y="300" fill="#ff3d00">H</text>
+    <text x="380" y="300" fill="#5d4037">R</text>
+    <text x="460" y="300" fill="#2e7d32">E</text>
+    <text x="530" y="300" fill="#2e7d32">L</text>
+  </g>
+
+</svg>
