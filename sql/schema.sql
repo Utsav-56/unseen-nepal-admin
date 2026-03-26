@@ -6,12 +6,17 @@
 -- EXTENSIONS & ENUMS
 -- Enabling pgcrypto for potential sensitive data encryption
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+create extension if not exists postgis;
+
+-- We will call the markdown text as GFM
+CREATE DOMAIN GFM AS TEXT;
 
 -- Enums for strict data integrity
 CREATE TYPE user_role AS ENUM ('tourist', 'guide', 'hotel_owner', 'admin');
 CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TYPE id_type AS ENUM ('citizenship', 'nid', 'license', 'pan');
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'completed', 'cancelled', 'reported');
+CREATE TYPE application_status AS ENUM ('approved', 'rejected');
 
 --  TABLES
 
@@ -41,35 +46,160 @@ CREATE TABLE public.verification_requests (
   updated_at timestamptz DEFAULT now()
 );
 
+
+CREATE TABLE public.guide_applications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  document_type id_type NOT NULL ,
+  description GFM,
+  previous_experience TEXT,
+  known_languages jsonb DEFAULT '[]',
+
+    status application_status default 'pending' not null,
+    admin_feedback GFM,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+
+);
+
+
+
+
+
 -- Guides: The public listing table
 CREATE TABLE public.guides (
   id uuid REFERENCES public.profiles(id) ON DELETE CASCADE PRIMARY KEY,
-  bio text,
-  languages jsonb DEFAULT '["Nepali", "English"]',
+
+  bio GFM,
+  known_languages jsonb DEFAULT '["Nepali"]',
   location text,
   hourly_rate numeric(10, 2),
   is_available boolean DEFAULT false NOT NULL,
   avg_rating numeric(2, 1) DEFAULT 0
 );
 
+
+-- 1. Create the service areas table
+CREATE TABLE public.guide_service_areas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  guide_id uuid REFERENCES public.guides(id) ON DELETE CASCADE NOT NULL,
+
+  -- Use 'geography' for accurate measurements in meters over the Earth's curve
+  -- POINT(longitude latitude)
+  location geography(POINT, 4326) NOT NULL,
+
+
+  -- Radius in meters (e.g., 5000 for 5km)
+  radius_meters numeric NOT NULL CHECK (radius_meters > 0),
+    -- The frontend should ask a map with radius support just like in facebook ads selection
+
+  location_name text, -- Optional: "Itahari Central" or "Dharan Foothills"
+  created_at timestamptz DEFAULT now()
+);
+
+-- 2. CREATE A SPATIAL INDEX (Crucial for performance)
+-- GiST indexes allow the database to search geographical 'boxes' instantly
+CREATE INDEX idx_guide_service_areas_location ON public.guide_service_areas USING GIST (location);
+
+-- 3. RLS POLICIES
+ALTER TABLE public.guide_service_areas ENABLE ROW LEVEL SECURITY;
+
+-- Everyone can see where a guide works
+CREATE POLICY "Service areas are public" ON public.guide_service_areas
+FOR SELECT USING (true);
+
+-- Only the guide can manage their own areas
+CREATE POLICY "Guides manage own areas" ON public.guide_service_areas
+FOR ALL USING (auth.uid() = guide_id);
+
+
 -- Bookings: The link between Tourist and Guide
 CREATE TABLE public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tourist_id uuid REFERENCES public.profiles(id) NOT NULL,
   guide_id uuid REFERENCES public.guides(id) NOT NULL,
+
+    -- Pending means the guide havenot accepted it yet,
   status booking_status DEFAULT 'pending' NOT NULL,
   hired_at timestamptz DEFAULT now(),
-  payment_status text DEFAULT 'unpaid'
+
+    destination_location geography(POINT, 4326),
+    destination_name text,
+    -- payment is must before proceeding
+  is_payment_recieved bool DEFAULT false
 );
+
+-- Index the booking locations for future analytics
+-- (e.g., "Which spots are trending in Itahari?")
+CREATE INDEX idx_bookings_destination_location ON public.bookings USING GIST (destination_location);
+
+
+CREATE OR REPLACE FUNCTION public.find_guides_for_destination(
+  dest_lat float,
+  dest_lon float
+)
+RETURNS TABLE (
+  guide_id uuid,
+  full_name text,
+  avatar_url text,
+  bio GFM,
+  hourly_rate numeric,
+  avg_rating numeric,
+  distance_from_center float -- Useful if you want to sort by proximity
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.full_name,
+    p.avatar_url,
+    g.bio,
+    g.hourly_rate,
+    g.avg_rating,
+    -- Calculate how far the center of the guide's area is from the chosen spot
+    ST_Distance(
+      sa.location,
+      ST_SetSRID(ST_MakePoint(dest_lon, dest_lat), 4326)::geography
+    ) as distance_from_center
+  FROM public.guide_service_areas sa
+  JOIN public.guides g ON sa.guide_id = g.id
+  JOIN public.profiles p ON g.id = p.id
+  WHERE
+    -- The Core Logic: Is the destination point inside the guide's radius?
+    ST_DWithin(
+      sa.location,
+      ST_SetSRID(ST_MakePoint(dest_lon, dest_lat), 4326)::geography,
+      sa.radius_meters
+    )
+    AND p.is_verified = true
+    AND g.is_available = true
+  ORDER BY g.avg_rating DESC, distance_from_center ASC;
+END;
+$$;
+
+/**
+  Frontend Implementation (Next.js/Flutter Logic)
+When the user selects "Bhedetar Hills Park" on the map, your app should:
+Grab the lat and lng from the Google Maps/Leaflet API.
+Call the RPC to update the "Available Guides" list instantly.
+When the user hits "Confirm Booking," send that point to the bookings table.
+ */
 
 -- Reviews: Only for completed bookings
 CREATE TABLE public.reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id) UNIQUE NOT NULL,
-  tourist_id uuid REFERENCES public.profiles(id) NOT NULL,
+
+    -- We dont need tourist id because we can derive it from booking id itself
+
   guide_id uuid REFERENCES public.guides(id) NOT NULL,
   rating integer CHECK (rating >= 1 AND rating <= 5),
+
   comment text,
+
   created_at timestamptz DEFAULT now()
 );
 
@@ -264,14 +394,19 @@ CREATE INDEX idx_reviews_guide_id ON public.reviews(guide_id);
 -- Production-grade table for Markdown stories
 CREATE TABLE public.stories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  author_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  uploader_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+
   title text NOT NULL,
-  description text NOT NULL, -- GFM Markdown content
-  featured_image_url text, -- For story thumbnail
+  description GFM NOT NULL, -- GFM Markdown content
+
   tags text[] DEFAULT '{}',
+
   likes_count integer DEFAULT 0 NOT NULL,
   comments_count integer DEFAULT 0 NOT NULL,
-  is_published boolean DEFAULT true NOT NULL,
+
+    -- Archived means user havent made it public same as draft
+  is_archived boolean DEFAULT false NOT NULL,
+
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -290,7 +425,9 @@ CREATE TABLE public.story_comments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
   user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+
   content text NOT NULL,
+
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );

@@ -63,6 +63,8 @@ class StoryService extends SupabaseService<Story> {
         return true;
     }
 
+    
+
     /**
      * Add a comment to a story
      * Note: Counter is handled by DB trigger

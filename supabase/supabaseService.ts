@@ -16,7 +16,7 @@ export interface RealtimeCallbacks<T> {
 /**
  * Interface for the validation errors
  */
-export interface ValidationErrors {
+export interface ZodValidationErrors {
     [key: string]: string[];
 }
 
@@ -26,15 +26,30 @@ export interface ValidationErrors {
  * @template T - The type of the entity
  * @template C - The type of the create/insert payload
  */
-export interface ServiceResult<T, C> {
-    data: T | null;
+export interface ServiceResult<T, C = Omit<T, keyof BaseEntity>> {
+    // data can be a single entity or an array of entities
+    // this is done so that we dont have to create different types for different operations
+    data: T | T[] | null;
 
-    error: Error | null;
     // we dont need is error because if not success then  it is auto error
     isSuccess: boolean;
 
     // the classical zod validation errors
-    validationErrors: ValidationErrors | null;
+    // these will be the errors in the client side
+    validationErrors: ZodValidationErrors | null;
+
+    /**
+     * @deprecated
+     * Dont use a generic error message rather use specific [validationErrors] or [backendError] to know exactly where we failed
+     * 
+     * @param error - The error to be stored
+     * this field will soon be removed so migrate to [validationErrors] or [backendError]
+     */
+    error: Error | null;
+
+    // the backend errors
+    // the errors returned by the backend canbe by db or anything
+    backendError: string | Error | null;
 }
 
 /**
@@ -150,7 +165,7 @@ export abstract class SupabaseService<T extends BaseEntity, C = Omit<T, keyof Ba
                 const validation = schema.safeParse(validatePayload);
 
                 if (!validation.success) {
-                    const errors: ValidationErrors = {};
+                    const errors: ZodValidationErrors = {};
 
                     validation.error.issues.forEach(err => {
                         const key = err.path.join(".");
@@ -162,7 +177,8 @@ export abstract class SupabaseService<T extends BaseEntity, C = Omit<T, keyof Ba
                         data: null,
                         error: null,
                         isSuccess: false,
-                        validationErrors: errors
+                        validationErrors: errors,
+                        backendError: "Validation failed"
                     };
                 }
             }
@@ -174,18 +190,31 @@ export abstract class SupabaseService<T extends BaseEntity, C = Omit<T, keyof Ba
                 data,
                 error: null,
                 isSuccess: true,
-                validationErrors: null
+                validationErrors: null,
+                backendError: null
             };
 
-        } catch (err) {
+        } catch (err: any) {
+            console.error(`[SupabaseService] Operation failed in ${this.tablename}:`, err);
 
             return {
                 data: null,
-                error: err as Error,
+                error: err instanceof Error ? err : new Error(String(err)),
                 isSuccess: false,
-                validationErrors: null
+                validationErrors: null,
+                backendError: err.message || String(err)
             };
         }
+    }
+
+    /**
+     * Convert coordinates to PostGIS POINT format
+     * @param longitude - The longitude
+     * @param latitude - The latitude
+     * @returns A string in the format 'POINT(longitude latitude)'
+     */
+    public static convertToGeoLocationText(longitude: number, latitude: number): string {
+        return `POINT(${longitude} ${latitude})`;
     }
 
 
