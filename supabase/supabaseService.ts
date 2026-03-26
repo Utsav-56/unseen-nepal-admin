@@ -29,7 +29,7 @@ export interface ZodValidationErrors {
 export interface ServiceResult<T, C = Omit<T, keyof BaseEntity>> {
     // data can be a single entity or an array of entities
     // this is done so that we dont have to create different types for different operations
-    data: T | T[] | null;
+    data: T | null;
 
     // we dont need is error because if not success then  it is auto error
     isSuccess: boolean;

@@ -240,3 +240,100 @@ BEGIN
     RETURN result;
 END;
 $$;
+
+
+/**
+Get detailed booking information with guide and tourist profiles
+*/
+CREATE OR REPLACE FUNCTION public.get_detailed_booking(target_booking_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    result jsonb;
+BEGIN
+    SELECT jsonb_build_object(
+        'id', b.id,
+        'tourist_id', b.tourist_id,
+        'guide_id', b.guide_id,
+        'status', b.status,
+        'start_date', b.start_date,
+        'end_date', b.end_date,
+        'total_amount', b.total_amount,
+        'message', b.message,
+        'hired_at', b.hired_at,
+        'destination_name', b.destination_name,
+        'is_payment_recieved', b.is_payment_recieved,
+        
+        -- Nested Guide Info
+        'guide', (
+            SELECT jsonb_build_object(
+                'id', m.id,
+                'name', m.full_name,
+                'username', m.username,
+                'avatar', m.avatar_url
+            )
+            FROM public.minimal_user_info m
+            WHERE m.id = b.guide_id
+        ),
+
+        -- Nested Tourist Info
+        'tourist', (
+            SELECT jsonb_build_object(
+                'id', m.id,
+                'name', m.full_name,
+                'username', m.username,
+                'avatar', m.avatar_url
+            )
+            FROM public.minimal_user_info m
+            WHERE m.id = b.tourist_id
+        )
+    ) INTO result
+    FROM public.bookings b
+    WHERE b.id = target_booking_id;
+
+    RETURN result;
+END;
+$$;
+
+
+/**
+Get list of bookings for a user by role ('tourist' or 'guide')
+*/
+CREATE OR REPLACE FUNCTION public.get_user_bookings(target_user_id uuid, user_role text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    result jsonb;
+BEGIN
+    SELECT COALESCE(jsonb_agg(booking_node), '[]'::jsonb) INTO result
+    FROM (
+        SELECT jsonb_build_object(
+            'id', b.id,
+            'status', b.status,
+            'start_date', b.start_date,
+            'end_date', b.end_date,
+            'total_amount', b.total_amount,
+            'destination_name', b.destination_name,
+            'guide', (
+                SELECT jsonb_build_object('name', m.full_name, 'avatar', m.avatar_url)
+                FROM public.minimal_user_info m WHERE m.id = b.guide_id
+            ),
+            'tourist', (
+                SELECT jsonb_build_object('name', m.full_name, 'avatar', m.avatar_url)
+                FROM public.minimal_user_info m WHERE m.id = b.tourist_id
+            )
+        ) as booking_node
+        FROM public.bookings b
+        WHERE 
+            (user_role = 'tourist' AND b.tourist_id = target_user_id) OR
+            (user_role = 'guide' AND b.guide_id = target_user_id)
+        ORDER BY b.hired_at DESC
+    ) sub;
+
+    RETURN result;
+END;
+$$;

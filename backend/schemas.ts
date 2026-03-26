@@ -152,13 +152,32 @@ export type CompleteUserProfile = z.infer<typeof CompleteUserProfileSchema> & Ba
 export const BookingSchema = BaseSchema.extend({
     tourist_id: z.string().uuid("Invalid tourist ID"),
     guide_id: z.string().uuid("Invalid guide ID"),
+
+    start_date: z.string(), // ISO date string (YYYY-MM-DD)
+    end_date: z.string(), // ISO date string (YYYY-MM-DD)
+    total_amount: z.number().min(0, "Amount cannot be negative"),
+    message: z.string().nullable().optional(),
+
     status: BookingStatus.default('pending'),
     hired_at: z.string().optional(),
     destination_location: z.union([z.string(), GeoPointSchema]).nullable().optional(),
     destination_name: z.string().nullable().optional(),
     is_payment_recieved: z.boolean().default(false),
 });
+
 export type Booking = z.infer<typeof BookingSchema> & BaseEntity;
+
+
+/**
+ * Complete Booking Hydration Schema
+ * Used to show detailed booking overview with linked profiles
+ */
+export const CompleteBookingDataSchema = BookingSchema.extend({
+    guide: MinimalUserSchema.optional(),
+    tourist: MinimalUserSchema.optional(),
+});
+
+export type CompleteBookingData = z.infer<typeof CompleteBookingDataSchema> & BaseEntity;
 
 /**
  * Reviews Schema

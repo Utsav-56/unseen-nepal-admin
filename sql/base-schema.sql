@@ -93,10 +93,26 @@ CREATE TABLE public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tourist_id uuid REFERENCES public.profiles(id) NOT NULL,
   guide_id uuid REFERENCES public.guides(id) NOT NULL,
+
+  start_date date NOT NULL,
+  end_date date NOT NULL,
+  
+  -- total_amount is calculated as (end_date - start_date) * hourly_rate
+  -- total_amount is stored in the database to avoid recalculation and potential floating point issues
+  total_amount numeric(10, 2) NOT NULL,
+
+  -- message from tourist to guide about the booking
+  -- it can be what the tourist wants to convey to the guide about the booking 
+  -- guide looks this and other factors and decides either to pick or reject
+  message text,
+
+
   status booking_status DEFAULT 'pending' NOT NULL,
   hired_at timestamptz DEFAULT now(),
+
   destination_location geography(POINT, 4326),
   destination_name text,
+  
   is_payment_recieved bool DEFAULT false
 );
 
