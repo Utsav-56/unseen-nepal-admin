@@ -163,3 +163,80 @@ BEGIN
     RETURN result;
 END;
 $$;
+
+
+
+
+/**
+Used for initial hydration of the guide profile page
+then the need data will be granularly requested
+*/
+CREATE OR REPLACE FUNCTION public.get_full_guide_data(target_guide_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    result jsonb;
+BEGIN
+    SELECT jsonb_build_object(
+        -- Profile & Identity
+        'id', p.id,
+        'full_name', p.first_name || ' ' || COALESCE(p.middle_name || ' ', '') || p.last_name,
+        'username', p.username,
+        'avatar_url', p.avatar_url,
+        'is_verified', p.is_verified,
+        
+        -- Guide Specifics
+        'bio', g.bio,
+        'known_languages', g.known_languages,
+        'hourly_rate', g.hourly_rate,
+        'avg_rating', g.avg_rating,
+        'is_available', g.is_available,
+
+        -- Service Areas (PostGIS Geography to GeoJSON)
+        'service_areas', (
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'id', sa.id,
+                'location_name', sa.location_name,
+                'radius_meters', sa.radius_meters,
+                'coordinates', ST_AsGeoJSON(sa.location)::jsonb->'coordinates'
+            )), '[]'::jsonb)
+            FROM public.guide_service_areas sa
+            WHERE sa.guide_id = g.id
+        ),
+
+        -- Reviews with Reviewer Info
+        'reviews', (
+            SELECT COALESCE(jsonb_agg(review_node), '[]'::jsonb)
+            FROM (
+                SELECT jsonb_build_object(
+                    'id', r.id,
+                    'rating', r.rating,
+                    'comment', r.comment,
+                    'created_at', r.created_at,
+                    'reviewer', (
+                        SELECT jsonb_build_object(
+                            'id', m.id,
+                            'name', m.full_name,
+                            'username', m.username,
+                            'avatar', m.avatar_url
+                        )
+                        FROM public.minimal_user_info m
+                        WHERE m.id = (SELECT tourist_id FROM public.bookings WHERE id = r.booking_id)
+                    )
+                ) as review_node
+                FROM public.reviews r
+                WHERE r.guide_id = g.id
+                ORDER BY r.created_at DESC
+                LIMIT 20 -- Keep the initial load light
+            ) sub
+        )
+    ) INTO result
+    FROM public.profiles p
+    JOIN public.guides g ON p.id = g.id
+    WHERE p.id = target_guide_id;
+
+    RETURN result;
+END;
+$$;

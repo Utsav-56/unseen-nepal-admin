@@ -1,64 +1,144 @@
 import { create } from 'zustand';
-import { Guide } from '../schemas';
+import { Guide, CompleteGuideData } from '../schemas';
 import { guideService } from '../services';
+import { useAuthStore } from './useAuthStore';
 
 interface GuideState {
     guides: Guide[];
     availableGuides: Guide[];
-    selectedGuide: Guide | null;
+    currentGuide: CompleteGuideData | null;
     isLoading: boolean;
     error: string | null;
 
-    fetchGuides: () => Promise<void>;
-    fetchAvailableGuides: () => Promise<void>;
-    selectGuide: (id: string) => Promise<void>;
-    searchByLocation: (location: string) => Promise<void>;
+    // Getters 
+    is_owner: () => boolean;
+
+    // Actions
+    fetchGuideDetail: (id: string) => Promise<void>;
+    fetchTopRated: () => Promise<void>;
+    searchByProximity: (lat: number, lon: number) => Promise<void>;
+
+    // Guide specific management
+    updateProfile: (updates: Partial<Guide>) => Promise<boolean>;
+    toggleAvailability: () => Promise<boolean>;
+    updateHourlyRate: (rate: number) => Promise<boolean>;
 }
 
-export const useGuideStore = create<GuideState>((set) => ({
+/**
+ * useGuideStore
+ * Manages the guide-related state, focusing on detailed profile hydration 
+ * and geographic searching.
+ */
+export const useGuideStore = create<GuideState>((set, get) => ({
     guides: [],
     availableGuides: [],
-    selectedGuide: null,
+    currentGuide: null,
     isLoading: false,
     error: null,
 
-    fetchGuides: async () => {
+    // Implementation of Getters
+    is_owner: () => {
+        const userId = useAuthStore.getState().profile()?.id;
+        const targetGuideId = get().currentGuide?.id;
+        return !!userId && !!targetGuideId && userId === targetGuideId;
+    },
+
+    /**
+     * fetchGuideDetail: Loads the complete guide profile including reviews and service areas
+     */
+    fetchGuideDetail: async (id: string) => {
         set({ isLoading: true, error: null });
-        const { data, isSuccess, error } = await guideService.getAll();
-        if (isSuccess && data) {
-            set({ guides: data, isLoading: false });
+        const result = await guideService.getFullGuideData(id);
+
+        const data = Array.isArray(result.data) ? result.data[0] : result.data;
+        if (result.isSuccess && data) {
+            set({ currentGuide: data, isLoading: false });
         } else {
-            set({ error: error?.message || 'Failed to fetch guides', isLoading: false });
+            set({ error: (result.backendError as string) || 'Failed to fetch guide details', isLoading: false });
         }
     },
 
-    fetchAvailableGuides: async () => {
+    /**
+     * fetchTopRated: Fetch high-performing guides for listings
+     */
+    fetchTopRated: async () => {
         set({ isLoading: true, error: null });
-        const { data, isSuccess, error } = await guideService.getAvailableGuides();
-        if (isSuccess && data) {
-            set({ availableGuides: data, isLoading: false });
+        const result = await guideService.getTopRated();
+        if (result.isSuccess && result.data) {
+            set({ guides: Array.isArray(result.data) ? result.data : [result.data], isLoading: false });
         } else {
-            set({ error: error?.message || 'Failed to fetch available guides', isLoading: false });
+            set({ error: (result.backendError as string) || 'Failed to fetch top guides', isLoading: false });
         }
     },
 
-    selectGuide: async (id: string) => {
+    /**
+     * searchByProximity: Find guides based on geolocation (lat, lon)
+     */
+    searchByProximity: async (lat, lon) => {
         set({ isLoading: true, error: null });
-        const { data, isSuccess, error } = await guideService.getById(id);
-        if (isSuccess && data) {
-            set({ selectedGuide: data, isLoading: false });
+        const result = await guideService.searchByProximity(lat, lon);
+        if (result.isSuccess && result.data) {
+            set({ availableGuides: Array.isArray(result.data) ? result.data : [result.data], isLoading: false });
         } else {
-            set({ error: error?.message || 'Failed to select guide', isLoading: false });
+            set({ error: (result.backendError as string) || 'Search failed', isLoading: false });
         }
     },
 
-    searchByLocation: async (location: string) => {
+    /**
+     * updateProfile: Updates the current guide record
+     */
+    updateProfile: async (updates) => {
+        const currentId = get().currentGuide?.id;
+        if (!currentId || !get().is_owner()) {
+            set({ error: 'Permission denied or no guide selected' });
+            return false;
+        }
+
         set({ isLoading: true, error: null });
-        const { data, isSuccess, error } = await guideService.searchByLocation(location);
-        if (isSuccess && data) {
-            set({ guides: data, isLoading: false });
+        const result = await guideService.updateGuide(currentId, updates);
+        if (result.isSuccess) {
+            await get().fetchGuideDetail(currentId);
+            return true;
         } else {
-            set({ error: error?.message || 'Failed to search guides', isLoading: false });
+            set({ error: (result.backendError as string) || 'Update failed', isLoading: false });
+            return false;
+        }
+    },
+
+    /**
+     * toggleAvailability: Handy method for a guide to toggle status
+     */
+    toggleAvailability: async () => {
+        const currentId = get().currentGuide?.id;
+        const currentStatus = get().currentGuide?.is_available;
+        if (!currentId || !get().is_owner()) return false;
+
+        set({ isLoading: true, error: null });
+        const result = await guideService.setAvailability(currentId, !currentStatus);
+        if (result.isSuccess) {
+            await get().fetchGuideDetail(currentId);
+            return true;
+        } else {
+            set({ error: (result.backendError as string) || 'Toggle failed', isLoading: false });
+            return false;
+        }
+    },
+
+    /**
+     * updateHourlyRate: Quick update for pricing
+     */
+    updateHourlyRate: async (rate) => {
+        const currentId = get().currentGuide?.id;
+        if (!currentId || !get().is_owner()) return false;
+
+        set({ isLoading: true, error: null });
+        const result = await guideService.updateRate(currentId, rate);
+        if (result.isSuccess) {
+            await get().fetchGuideDetail(currentId);
+            return true;
+        } else {
+            set({ error: (result.backendError as string) || 'Rate update failed', isLoading: false });
+            return false;
         }
     }
 }));

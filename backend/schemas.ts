@@ -224,3 +224,39 @@ export const CompleteStoryDataSchema = StorySchema.omit({ uploader_id: true }).e
 });
 
 export type CompleteStoryData = z.infer<typeof CompleteStoryDataSchema> & BaseEntity;
+
+
+/**
+ * Complete Guide Profile Schema
+ * Used for initial hydration of the guide profile page via get_full_guide_data RPC
+ */
+export const CompleteGuideDataSchema = z.object({
+    id: z.string().uuid(),
+    full_name: z.string(),
+    username: z.string(),
+    avatar_url: z.string().url().nullable(),
+    is_verified: z.boolean(),
+
+    bio: z.string().nullable().optional(),
+    known_languages: z.array(z.string()).default(["Nepali"]),
+    hourly_rate: z.number().nullable().optional(),
+    avg_rating: z.number().default(0),
+    is_available: z.boolean().default(false),
+
+    service_areas: z.array(z.object({
+        id: z.string().uuid(),
+        location_name: z.string().nullable().optional(),
+        radius_meters: z.number(),
+        coordinates: z.tuple([z.number(), z.number()]), // [longitude, latitude]
+    })).default([]),
+
+    reviews: z.array(z.object({
+        id: z.string().uuid(),
+        rating: z.number(),
+        comment: z.string().nullable().optional(),
+        created_at: z.string(),
+        reviewer: MinimalUserSchema
+    })).default([]),
+});
+
+export type CompleteGuideData = z.infer<typeof CompleteGuideDataSchema>;

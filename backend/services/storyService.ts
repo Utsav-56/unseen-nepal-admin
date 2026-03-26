@@ -14,7 +14,7 @@ import {
  */
 class StoryService extends SupabaseService<Story> {
     constructor() {
-        super('stories', StorySchema);
+        super('stories', StorySchema as any);
     }
 
     /**
