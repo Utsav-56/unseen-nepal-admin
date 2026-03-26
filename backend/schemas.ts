@@ -14,22 +14,57 @@ export type IdType = z.infer<typeof IdType>;
 export const BookingStatus = z.enum(['pending', 'confirmed', 'completed', 'cancelled', 'reported']);
 export type BookingStatus = z.infer<typeof BookingStatus>;
 
+export const ApplicationStatus = z.enum(['pending', 'approved', 'rejected']);
+export type ApplicationStatus = z.infer<typeof ApplicationStatus>;
+
 // Base Zod schema that matches BaseEntity
 export const BaseSchema = z.object({
-    id: z.string().uuid(),
-    created_at: z.string(),
+    id: z.string().uuid().optional(), // Optional for creates
+    created_at: z.string().optional(),
+});
+
+/**
+ * Geo Point Schema for PostGIS
+ */
+export const GeoPointSchema = z.object({
+    type: z.literal("Point"),
+    coordinates: z.tuple([z.number(), z.number()]), // [longitude, latitude]
 });
 
 /**
  * Profiles Schema
  */
 export const ProfileSchema = BaseSchema.extend({
-    full_name: z.string().min(1, "Full name is required"),
+
+    // these are not defined in the base schema but will be in response
+    id: z.string().uuid().optional(),
+    created_at: z.string().optional(),
+
+    first_name: z.string().nullable().optional(),
+    middle_name: z.string().nullable().optional(),
+    last_name: z.string().nullable().optional(),
+
+    username: z.string().min(3, "Username must be at least 3 characters").nullable().optional(),
+    phone_number: z.string().nullable().optional(),
+    emergency_contact: z.string().nullable().optional(),
     avatar_url: z.string().url("Invalid avatar URL").nullable().optional(),
     role: UserRole.default('tourist'),
+
+    onboarding_completed: z.boolean().default(false),
+    preferences: z.array(z.string()).default([]),
+    home_location: z.union([z.string(), GeoPointSchema]).nullable().optional(),
+
     is_verified: z.boolean().default(false),
+    is_guide: z.boolean().default(false),
+    is_admin: z.boolean().default(false),
+    updated_at: z.string().optional(),
 });
 export type Profile = z.infer<typeof ProfileSchema> & BaseEntity;
+
+
+
+
+
 
 /**
  * Verification Requests Schema
@@ -47,17 +82,58 @@ export const VerificationRequestSchema = BaseSchema.extend({
 export type VerificationRequest = z.infer<typeof VerificationRequestSchema> & BaseEntity;
 
 /**
+ * Guide Applications Schema
+ */
+export const GuideApplicationSchema = BaseSchema.extend({
+    user_id: z.string().uuid(),
+    document_type: IdType,
+    description: z.string().nullable().optional(),
+    previous_experience: z.string().nullable().optional(),
+    known_languages: z.array(z.string()).default([]),
+    status: ApplicationStatus.default('pending'),
+    admin_feedback: z.string().nullable().optional(),
+    updated_at: z.string().optional(),
+});
+export type GuideApplication = z.infer<typeof GuideApplicationSchema> & BaseEntity;
+
+/**
  * Guides Schema
  */
 export const GuideSchema = BaseSchema.extend({
     bio: z.string().nullable().optional(),
-    languages: z.any().default(["Nepali", "English"]),
+    known_languages: z.array(z.string()).default(["Nepali"]),
     location: z.string().nullable().optional(),
     hourly_rate: z.number().nullable().optional(),
     is_available: z.boolean().default(false),
     avg_rating: z.number().default(0),
 });
 export type Guide = z.infer<typeof GuideSchema> & BaseEntity;
+
+/**
+ * Guide Service Areas Schema
+ */
+export const GuideServiceAreaSchema = BaseSchema.extend({
+    guide_id: z.string().uuid(),
+    location: z.union([z.string(), GeoPointSchema]),
+    radius_meters: z.number().positive(),
+    location_name: z.string().nullable().optional(),
+});
+export type GuideServiceArea = z.infer<typeof GuideServiceAreaSchema> & BaseEntity;
+
+
+/**
+ * Complete User Profile Schema
+ * this will be returned by the get_complete_user_profile rpc function
+ * always use this data on stores because it is the most complete data in single call
+ * 
+ */
+export const CompleteUserProfileSchema = BaseSchema.extend({
+    profile: ProfileSchema,
+    guide_data: GuideSchema.nullable().optional(),
+    service_areas: z.array(GuideServiceAreaSchema).nullable().optional(),
+    is_onbording_completed: z.boolean().default(false),
+});
+export type CompleteUserProfile = z.infer<typeof CompleteUserProfileSchema> & BaseEntity;
 
 /**
  * Bookings Schema
@@ -67,7 +143,9 @@ export const BookingSchema = BaseSchema.extend({
     guide_id: z.string().uuid("Invalid guide ID"),
     status: BookingStatus.default('pending'),
     hired_at: z.string().optional(),
-    payment_status: z.string().default('unpaid').nullable().optional(),
+    destination_location: z.union([z.string(), GeoPointSchema]).nullable().optional(),
+    destination_name: z.string().nullable().optional(),
+    is_payment_recieved: z.boolean().default(false),
 });
 export type Booking = z.infer<typeof BookingSchema> & BaseEntity;
 
@@ -76,7 +154,6 @@ export type Booking = z.infer<typeof BookingSchema> & BaseEntity;
  */
 export const ReviewSchema = BaseSchema.extend({
     booking_id: z.string().uuid("Invalid booking ID"),
-    tourist_id: z.string().uuid("Invalid tourist ID"),
     guide_id: z.string().uuid("Invalid guide ID"),
     rating: z.number().min(1).max(5, "Rating must be between 1 and 5"),
     comment: z.string().nullable().optional(),
@@ -87,14 +164,13 @@ export type Review = z.infer<typeof ReviewSchema> & BaseEntity;
  * Stories Schema
  */
 export const StorySchema = BaseSchema.extend({
-    author_id: z.string().uuid(),
+    uploader_id: z.string().uuid(),
     title: z.string().min(1, "Title is required"),
-    description: z.string().min(1, "Content is required"),
-    featured_image_url: z.string().url().nullable().optional(),
+    description: z.string().min(1, "Description is required"),
     tags: z.array(z.string()).default([]),
     likes_count: z.number().default(0),
     comments_count: z.number().default(0),
-    is_published: z.boolean().default(true),
+    is_archived: z.boolean().default(false),
     updated_at: z.string().optional(),
 });
 export type Story = z.infer<typeof StorySchema> & BaseEntity;
@@ -118,4 +194,6 @@ export const StoryCommentSchema = BaseSchema.extend({
     updated_at: z.string().optional(),
 });
 export type StoryComment = z.infer<typeof StoryCommentSchema> & BaseEntity;
+
+
 

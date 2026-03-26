@@ -16,7 +16,7 @@ CREATE TYPE user_role AS ENUM ('tourist', 'guide', 'hotel_owner', 'admin');
 CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TYPE id_type AS ENUM ('citizenship', 'nid', 'license', 'pan');
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'completed', 'cancelled', 'reported');
-CREATE TYPE application_status AS ENUM ('approved', 'rejected');
+CREATE TYPE application_status AS ENUM ('pending', 'approved', 'rejected');
 
 --  TABLES
 
@@ -77,9 +77,6 @@ CREATE TABLE public.guide_applications (
 );
 
 
-
-
-
 -- Guides: The public listing table
 CREATE TABLE public.guides (
   id uuid REFERENCES public.profiles(id) ON DELETE CASCADE PRIMARY KEY,
@@ -90,6 +87,9 @@ CREATE TABLE public.guides (
   hourly_rate numeric(10, 2),
   is_available boolean DEFAULT false NOT NULL,
   avg_rating numeric(2, 1) DEFAULT 0
+
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 

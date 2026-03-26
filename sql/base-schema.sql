@@ -10,7 +10,7 @@ CREATE TYPE user_role AS ENUM ('tourist', 'guide', 'hotel_owner', 'admin');
 CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TYPE id_type AS ENUM ('citizenship', 'nid', 'license', 'pan');
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'completed', 'cancelled', 'reported');
-CREATE TYPE application_status AS ENUM ('approved', 'rejected');
+CREATE TYPE application_status AS ENUM ('pending', 'approved', 'rejected');
 
 -- TABLES
 
@@ -155,49 +155,3 @@ CREATE INDEX idx_stories_is_archived ON public.stories(is_archived);
 CREATE INDEX idx_story_likes_story_id ON public.story_likes(story_id);
 CREATE INDEX idx_story_comments_story_id ON public.story_comments(story_id);
 
--- RPC FUNCTIONS
-CREATE OR REPLACE FUNCTION public.find_guides_for_destination(
-  dest_lat float,
-  dest_lon float
-)
-RETURNS TABLE (
-  guide_id uuid,
-  first_name text,
-  last_name text,
-  avatar_url text,
-  bio GFM,
-  hourly_rate numeric,
-  avg_rating numeric,
-  distance_from_center float
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT
-    p.id,
-    p.first_name,
-    p.last_name,
-    p.avatar_url,
-    g.bio,
-    g.hourly_rate,
-    g.avg_rating,
-    ST_Distance(
-      sa.location,
-      ST_SetSRID(ST_MakePoint(dest_lon, dest_lat), 4326)::geography
-    ) as distance_from_center
-  FROM public.guide_service_areas sa
-  JOIN public.guides g ON sa.guide_id = g.id
-  JOIN public.profiles p ON g.id = p.id
-  WHERE
-    ST_DWithin(
-      sa.location,
-      ST_SetSRID(ST_MakePoint(dest_lon, dest_lat), 4326)::geography,
-      sa.radius_meters
-    )
-    AND p.is_verified = true
-    AND g.is_available = true
-  ORDER BY g.avg_rating DESC, distance_from_center ASC;
-END;
-$$;
