@@ -107,8 +107,8 @@ USING (
 
 -- STORIES
 CREATE POLICY "Stories are viewed by everyone" ON public.stories FOR SELECT USING (true);
-CREATE POLICY "Users can create stories" ON public.stories FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "Authors manage own stories" ON public.stories FOR ALL USING (auth.uid() = author_id);
+CREATE POLICY "Users can create stories" ON public.stories FOR INSERT WITH CHECK (auth.uid() = uploader_id);
+CREATE POLICY "Authors manage own stories" ON public.stories FOR ALL USING (auth.uid() = uploader_id);
 
 -- LIKES
 CREATE POLICY "Likes are viewed by everyone" ON public.story_likes FOR SELECT USING (true);

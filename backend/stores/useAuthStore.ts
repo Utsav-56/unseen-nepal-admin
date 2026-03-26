@@ -9,7 +9,7 @@ interface AuthState {
 
     // Getters for abstracted access
     is_logged_in: () => boolean;
-    is_onbording_done: () => boolean;
+    is_onboarding_done: () => boolean;
     profile: () => CompleteUserProfile | null;
 
     // Core Actions
@@ -33,7 +33,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     // Implementation of Getters 
     is_logged_in: () => get().completeProfile !== null,
-    is_onbording_done: () => get().completeProfile?.is_onbording_completed ?? false,
+    is_onboarding_done: () => get().completeProfile?.is_onboarding_completed ?? false,
     profile: () => get().completeProfile,
 
     /**

@@ -131,7 +131,7 @@ export const CompleteUserProfileSchema = BaseSchema.extend({
     profile: ProfileSchema,
     guide_data: GuideSchema.nullable().optional(),
     service_areas: z.array(GuideServiceAreaSchema).nullable().optional(),
-    is_onbording_completed: z.boolean().default(false),
+    is_onboarding_completed: z.boolean().default(false),
 });
 export type CompleteUserProfile = z.infer<typeof CompleteUserProfileSchema> & BaseEntity;
 

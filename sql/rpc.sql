@@ -27,7 +27,7 @@ BEGIN
             FROM public.guide_service_areas sa
             WHERE sa.guide_id = p.id
         ),
-        'is_onbording_completed', p.onboarding_completed
+        'is_onboarding_completed', p.onboarding_completed
     ) INTO result
     FROM public.profiles p
     WHERE p.id = user_id;
@@ -88,7 +88,7 @@ $$;
 CREATE OR REPLACE VIEW public.minimal_user_info AS
 SELECT 
     id, 
-    COALESCE(first_name || ' ' || last_name, username) as full_name, 
+    COALESCE(first_name || ' ' || COALESCE(middle_name || ' ', '') || last_name, username) as full_name, 
     username, 
     avatar_url
 FROM public.profiles;
