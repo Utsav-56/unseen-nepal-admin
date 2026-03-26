@@ -39,25 +39,13 @@ CREATE TABLE public.profiles (
   updated_at timestamptz DEFAULT now()
 );
 
--- Verification Requests: The "Trust" engine
-CREATE TABLE public.verification_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  entity_type text DEFAULT 'guide' NOT NULL,
-  id_type id_type NOT NULL,
-  id_number text NOT NULL,
-  id_photo_url text NOT NULL,
-  status verification_status DEFAULT 'pending' NOT NULL,
-  admin_notes text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
 -- Guide Applications
 CREATE TABLE public.guide_applications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   document_type id_type NOT NULL,
+  id_number text NOT NULL,
+  id_photo_url text NOT NULL, -- Path to secure storage
   description GFM,
   previous_experience TEXT,
   known_languages jsonb DEFAULT '[]',
@@ -164,7 +152,7 @@ CREATE INDEX idx_guide_service_areas_location ON public.guide_service_areas USIN
 CREATE INDEX idx_bookings_destination_location ON public.bookings USING GIST (destination_location);
 CREATE INDEX idx_bookings_tourist_id ON public.bookings(tourist_id);
 CREATE INDEX idx_bookings_guide_id ON public.bookings(guide_id);
-CREATE INDEX idx_verification_user_id ON public.verification_requests(user_id);
+CREATE INDEX idx_guide_application_user_id ON public.guide_applications(user_id);
 CREATE INDEX idx_reviews_guide_id ON public.reviews(guide_id);
 CREATE INDEX idx_stories_uploader_id ON public.stories(uploader_id);
 CREATE INDEX idx_stories_is_archived ON public.stories(is_archived);

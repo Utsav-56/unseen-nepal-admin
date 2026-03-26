@@ -18,30 +18,19 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- VERIFICATION HANDLER
-CREATE OR REPLACE FUNCTION public.handle_verification_update()
+-- GUIDE APPLICATION HANDLER
+CREATE OR REPLACE FUNCTION public.handle_guide_application_update()
 RETURNS trigger AS $$
 BEGIN
   IF NEW.status = 'approved' THEN
-    IF NEW.entity_type NOT IN ('guide', 'tourist', 'hotel_owner') THEN
-      RAISE EXCEPTION 'Invalid role assignment';
-    END IF;
-
-    IF NEW.entity_type = 'admin' THEN
-      RAISE EXCEPTION 'Cannot promote to Admin via verification request';
-    END IF;
-
     UPDATE public.profiles 
     SET is_verified = true, 
-        role = NEW.entity_type::user_role,
-        is_guide = (NEW.entity_type = 'guide'),
-        is_admin = (NEW.entity_type = 'admin')
+        role = 'guide'::user_role,
+        is_guide = true
     WHERE id = NEW.user_id;
 
-    IF NEW.entity_type = 'guide' THEN
-      INSERT INTO public.guides (id, is_available) VALUES (NEW.user_id, true)
-      ON CONFLICT (id) DO NOTHING;
-    END IF;
+    INSERT INTO public.guides (id, is_available) VALUES (NEW.user_id, true)
+    ON CONFLICT (id) DO NOTHING;
   ELSIF NEW.status = 'rejected' THEN
     UPDATE public.profiles SET is_verified = false, is_guide = false WHERE id = NEW.user_id;
   END IF;
@@ -49,9 +38,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql security definer;
 
-CREATE TRIGGER on_verification_status_change
-  AFTER UPDATE OF status ON public.verification_requests
-  FOR EACH ROW EXECUTE FUNCTION public.handle_verification_update();
+CREATE TRIGGER on_guide_application_status_change
+  AFTER UPDATE OF status ON public.guide_applications
+  FOR EACH ROW EXECUTE FUNCTION public.handle_guide_application_update();
+
 
 -- GUIDE RATING AUTOMATION
 CREATE OR REPLACE FUNCTION public.update_guide_rating()

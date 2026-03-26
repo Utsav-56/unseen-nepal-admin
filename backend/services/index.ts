@@ -1,5 +1,5 @@
 export * from "./profileService";
-export * from "./verificationRequestService";
+export * from "./guideApplicationService";
 export * from "./guideService";
 export * from "./bookingService";
 export * from "./reviewService";

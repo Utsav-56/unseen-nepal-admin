@@ -77,20 +77,6 @@ export const MinimalUserSchema = z.object({
     avatar: z.string().url().nullable(),
 });
 
-/**
- * Verification Requests Schema
- */
-export const VerificationRequestSchema = BaseSchema.extend({
-    user_id: z.string().uuid("Invalid user ID"),
-    entity_type: z.string().default('guide'),
-    id_type: IdType,
-    id_number: z.string().min(1, "ID number is required"),
-    id_photo_url: z.string().min(1, "ID photo URL is required"),
-    status: VerificationStatus.default('pending'),
-    admin_notes: z.string().nullable().optional(),
-    updated_at: z.string().optional(),
-});
-export type VerificationRequest = z.infer<typeof VerificationRequestSchema> & BaseEntity;
 
 /**
  * Guide Applications Schema
@@ -98,6 +84,9 @@ export type VerificationRequest = z.infer<typeof VerificationRequestSchema> & Ba
 export const GuideApplicationSchema = BaseSchema.extend({
     user_id: z.string().uuid(),
     document_type: IdType,
+    id_number: z.string().min(1, "ID number is required"),
+    id_photo_url: z.string().min(1, "ID photo URL is required"), // Secure path
+
     description: z.string().nullable().optional(),
     previous_experience: z.string().nullable().optional(),
     known_languages: z.array(z.string()).default([]),

@@ -1,6 +1,6 @@
 -- ENABLE RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.verification_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.guide_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
@@ -31,10 +31,11 @@ FOR EACH ROW
 WHEN (auth.uid() = OLD.id)
 EXECUTE FUNCTION public.prevent_sensitive_profile_update();
 
--- VERIFICATION REQUESTS
-CREATE POLICY "Users view own request" ON public.verification_requests FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users submit request" ON public.verification_requests FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Admins full access" ON public.verification_requests USING (
+
+-- GUIDE APPLICATIONS
+CREATE POLICY "Users view own application" ON public.guide_applications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users submit application" ON public.guide_applications FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Admins full access" ON public.guide_applications USING (
   (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
 );
 
@@ -99,7 +100,7 @@ USING (
   bucket_id = 'vault' AND 
   (storage.foldername(name))[1] = auth.uid()::text AND
   EXISTS (
-    SELECT 1 FROM public.verification_requests 
+    SELECT 1 FROM public.guide_applications 
     WHERE user_id = auth.uid() AND status = 'pending'
   )
 );
