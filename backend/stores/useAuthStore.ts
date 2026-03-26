@@ -1,68 +1,159 @@
 import { create } from 'zustand';
-import { User } from '@supabase/supabase-js';
-import { createClient } from '../../supabase/client';
-import { Profile } from '../schemas';
-import { profileService } from '../services';
+import { CompleteUserProfile, Profile } from '../schemas';
+import { authService } from '../services';
 
 interface AuthState {
-    user: User | null;
-    profile: Profile | null;
+    completeProfile: CompleteUserProfile | null;
     isLoading: boolean;
     error: string | null;
 
+    // Getters for abstracted access
+    is_logged_in: () => boolean;
+    is_onbording_done: () => boolean;
+    profile: () => CompleteUserProfile | null;
+
+    // Core Actions
     initialize: () => Promise<void>;
-    signOut: () => Promise<void>;
-    refreshProfile: () => Promise<void>;
-    setUser: (user: User | null) => void;
-    setProfile: (profile: Profile | null) => void;
+    login: (email: string, password: string) => Promise<boolean>;
+    signUp: (email: string, password: string, metadata?: any) => Promise<boolean>;
+    onboarding: (profileData: Partial<Profile>) => Promise<boolean>;
+    refresh: () => Promise<void>;
+    logout: () => Promise<void>;
 }
 
+/**
+ * useAuthStore
+ * Manages the authentication state and complete user profile.
+ * Uses the authService for all Supabase interactions.
+ */
 export const useAuthStore = create<AuthState>((set, get) => ({
-    user: null,
-    profile: null,
+    completeProfile: null,
     isLoading: true,
     error: null,
 
+    // Implementation of Getters 
+    is_logged_in: () => get().completeProfile !== null,
+    is_onbording_done: () => get().completeProfile?.is_onbording_completed ?? false,
+    profile: () => get().completeProfile,
+
+    /**
+     * Initialize the store by checking the current session
+     */
     initialize: async () => {
         set({ isLoading: true, error: null });
-        const supabase = createClient();
-
         try {
-            // Using getUser() for production-ready security as it validates the session
-            const { data: { user }, error } = await supabase.auth.getUser();
+            const userResult = await authService.getCurrentUser();
 
-            if (error || !user) {
-                set({ user: null, profile: null, isLoading: false });
-                return;
+            // Handle User | User[] | null type from ServiceResult
+            const user = Array.isArray(userResult.data) ? userResult.data[0] : userResult.data;
+
+            if (userResult.isSuccess && user) {
+                const profileResult = await authService.fetchProfile(user.id);
+                // Handle CompleteUserProfile | CompleteUserProfile[] | null
+                const profileData = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+
+                if (profileResult.isSuccess && profileData) {
+                    set({ completeProfile: profileData, isLoading: false });
+                    return;
+                }
             }
+            set({ completeProfile: null, isLoading: false });
+        } catch (err: any) {
+            set({ error: err.message, isLoading: false, completeProfile: null });
+        }
+    },
 
-            const profileResult = await profileService.getById(user.id);
+    /**
+     * Basic Login with Email
+     */
+    login: async (email, password) => {
+        set({ isLoading: true, error: null });
+        const result = await authService.loginWithEmail(email, password);
+
+        const loginData = Array.isArray(result.data) ? result.data[0] : result.data;
+
+        if (result.isSuccess && loginData?.user) {
+            const profileResult = await authService.fetchProfile(loginData.user.id);
+            const profileData = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+
             set({
-                user,
-                profile: profileResult.isSuccess ? profileResult.data : null,
+                completeProfile: profileResult.isSuccess && profileData ? profileData : null,
                 isLoading: false
             });
-        } catch (err: any) {
-            set({ error: err.message, isLoading: false, user: null, profile: null });
+            return true;
+        } else {
+            set({ error: (result.backendError as string) || 'Login failed', isLoading: false });
+            return false;
         }
     },
 
-    signOut: async () => {
-        const supabase = createClient();
-        await supabase.auth.signOut();
-        set({ user: null, profile: null, isLoading: false });
-    },
+    /**
+     * Sign Up with Email
+     */
+    signUp: async (email, password, metadata) => {
+        set({ isLoading: true, error: null });
+        const result = await authService.signUp(email, password, metadata);
 
-    refreshProfile: async () => {
-        const { user } = get();
-        if (!user) return;
+        const signUpData = Array.isArray(result.data) ? result.data[0] : result.data;
 
-        const profileResult = await profileService.getById(user.id);
-        if (profileResult.isSuccess) {
-            set({ profile: profileResult.data });
+        if (result.isSuccess) {
+            if (signUpData?.user) {
+                const profileResult = await authService.fetchProfile(signUpData.user.id);
+                const profileData = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+                set({ completeProfile: profileResult.isSuccess && profileData ? profileData : null });
+            }
+            set({ isLoading: false });
+            return true;
+        } else {
+            set({ error: (result.backendError as string) || 'Signup failed', isLoading: false });
+            return false;
         }
     },
 
-    setUser: (user) => set({ user }),
-    setProfile: (profile) => set({ profile })
+    /**
+     * Handle Profile Onboarding
+     */
+    onboarding: async (profileData) => {
+        const profile = get().profile();
+        if (!profile || !profile.id) {
+            set({ error: 'No active profile to onboard' });
+            return false;
+        }
+
+        set({ isLoading: true, error: null });
+        const result = await authService.onboarding(profile.id, profileData);
+
+        if (result.isSuccess) {
+            await get().refresh();
+            set({ isLoading: false });
+            return true;
+        } else {
+            set({ error: (result.backendError as string) || 'Onboarding failed', isLoading: false });
+            return false;
+        }
+    },
+
+    /**
+     * Refresh the current profile data
+     */
+    refresh: async () => {
+        const currentProfile = get().profile();
+        if (!currentProfile || !currentProfile.id) return;
+
+        const profileResult = await authService.fetchProfile(currentProfile.id);
+        const profileData = Array.isArray(profileResult.data) ? profileResult.data[0] : profileResult.data;
+
+        if (profileResult.isSuccess && profileData) {
+            set({ completeProfile: profileData });
+        }
+    },
+
+    /**
+     * Logout and clear state
+     */
+    logout: async () => {
+        set({ isLoading: true });
+        await authService.logout();
+        set({ completeProfile: null, isLoading: false, error: null });
+    }
 }));

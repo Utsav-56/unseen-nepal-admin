@@ -142,6 +142,17 @@ class AuthService extends SupabaseService<Profile> {
             return data as Profile;
         }, profileData, true);
     }
+
+    /**
+     * Get the currently authenticated user session
+     */
+    async getCurrentUser() {
+        return this.execute(async () => {
+            const { data: { user }, error } = await this.supabase.auth.getUser();
+            if (error) throw error;
+            return user;
+        });
+    }
 }
 
 export const authService = new AuthService();

@@ -83,3 +83,83 @@ BEGIN
   ORDER BY g.avg_rating DESC, distance_from_center ASC;
 END;
 $$;
+
+
+CREATE OR REPLACE VIEW public.minimal_user_info AS
+SELECT 
+    id, 
+    COALESCE(first_name || ' ' || last_name, username) as full_name, 
+    username, 
+    avatar_url
+FROM public.profiles;
+
+CREATE OR REPLACE FUNCTION public.get_full_story_data(target_story_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    result jsonb;
+BEGIN
+    SELECT jsonb_build_object(
+        'id', s.id,
+        'title', s.title,
+        'description', s.description,
+        'tags', s.tags,
+        'likes_count', s.likes_count,
+        'comments_count', s.comments_count,
+        'is_archived', s.is_archived,
+        'created_at', s.created_at,
+        'updated_at', s.updated_at,
+        
+        -- Author Object
+        'author', (
+            SELECT jsonb_build_object(
+                'id', m.id,
+                'name', m.full_name,
+                'username', m.username,
+                'avatar', m.avatar_url
+            )
+            FROM public.minimal_user_info m
+            WHERE m.id = s.uploader_id
+        ),
+
+        -- Top 10 Comments (Still nested objects)
+        'comments', (
+            SELECT COALESCE(jsonb_agg(comment_node), '[]'::jsonb)
+            FROM (
+                SELECT jsonb_build_object(
+                    'id', sc.id,
+                    'content', sc.content,
+                    'created_at', sc.created_at,
+                    'user', (
+                        SELECT jsonb_build_object(
+                            'id', mu.id,
+                            'name', mu.full_name,
+                            'username', mu.username,
+                            'avatar', mu.avatar_url
+                        )
+                        FROM public.minimal_user_info mu
+                        WHERE mu.id = sc.user_id
+                    )
+                ) as comment_node
+                FROM public.story_comments sc
+                WHERE sc.story_id = s.id
+                ORDER BY sc.created_at DESC
+                LIMIT 10
+            ) sub
+        ),
+
+        -- Liked By UUID Array
+        'liked_by', (
+            SELECT COALESCE(array_agg(user_id), '{}'::uuid[])
+            FROM public.story_likes
+            WHERE story_id = s.id
+        )
+    ) INTO result
+    FROM public.stories s
+    WHERE s.id = target_story_id AND s.is_archived = false;
+
+    RETURN result;
+END;
+$$;

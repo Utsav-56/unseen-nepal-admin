@@ -63,8 +63,19 @@ export type Profile = z.infer<typeof ProfileSchema> & BaseEntity;
 
 
 
-
-
+/**
+ * Minimal user means a minimum public info of the user 
+ * it is used in places like comments, stories or bookings
+ */
+/**
+ * Minimal User Card (The DRY interface)
+ */
+export const MinimalUserSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    username: z.string(),
+    avatar: z.string().url().nullable(),
+});
 
 /**
  * Verification Requests Schema
@@ -196,4 +207,20 @@ export const StoryCommentSchema = BaseSchema.extend({
 export type StoryComment = z.infer<typeof StoryCommentSchema> & BaseEntity;
 
 
+/**
+ * Complete Story Schema
+ * this will be returned by the get_full_story_data rpc function
+ * always use this data on stores because it is the most complete data in single call
+ */
+export const CompleteStoryDataSchema = StorySchema.omit({ uploader_id: true }).extend({
+    author: MinimalUserSchema,
+    comments: z.array(z.object({
+        id: z.string().uuid(),
+        content: z.string(),
+        created_at: z.string(),
+        user: MinimalUserSchema
+    })).default([]),
+    liked_by: z.array(z.string().uuid()).default([]),
+});
 
+export type CompleteStoryData = z.infer<typeof CompleteStoryDataSchema> & BaseEntity;
