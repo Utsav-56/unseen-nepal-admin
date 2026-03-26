@@ -12,12 +12,14 @@ ALTER TABLE public.story_comments ENABLE ROW LEVEL SECURITY;
 -- PROFILES
 CREATE POLICY "Public profiles are viewable" ON public.profiles FOR SELECT USING (true);
 
--- PROFILE SECURITY TRIGGER (Internal Security)
 CREATE OR REPLACE FUNCTION public.prevent_sensitive_profile_update()
 RETURNS trigger AS $$
 BEGIN
-  IF NEW.role <> OLD.role OR NEW.is_verified <> OLD.is_verified THEN
-    RAISE EXCEPTION 'You cannot change role or verification status';
+  IF NEW.role <> OLD.role 
+     OR NEW.is_verified <> OLD.is_verified 
+     OR NEW.is_guide <> OLD.is_guide 
+     OR NEW.is_admin <> OLD.is_admin THEN
+    RAISE EXCEPTION 'You cannot change role, verification status, or admin/guide flags';
   END IF;
   RETURN NEW;
 END;

@@ -21,14 +21,28 @@ CREATE TYPE application_status AS ENUM ('approved', 'rejected');
 --  TABLES
 
 -- Profiles: Extends Supabase Auth.users
--- Security: Users cannot change their own 'role' or 'is_verified' status.
+-- Security: Users cannot change their own 'role', 'is_verified', 'is_guide', or 'is_admin' status.
 CREATE TABLE public.profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  full_name text NOT NULL,
+  first_name text,
+  middle_name text,
+  last_name text,
+  username text UNIQUE,
+  phone_number text,
+  emergency_contact text,
   avatar_url text,
   role user_role DEFAULT 'tourist' NOT NULL,
+  
+  onboarding_completed boolean DEFAULT false NOT NULL,
+  preferences text[] DEFAULT '{}',
+  home_location geography(POINT, 4326),
+
   is_verified boolean DEFAULT false NOT NULL,
-  created_at timestamptz DEFAULT now()
+  is_guide boolean DEFAULT false NOT NULL,
+  is_admin boolean DEFAULT false NOT NULL,
+  
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 -- Verification Requests: The "Trust" engine
@@ -209,8 +223,14 @@ CREATE TABLE public.reviews (
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
+  INSERT INTO public.profiles (id, first_name, last_name, avatar_url, username)
+  VALUES (
+    new.id, 
+    new.raw_user_meta_data->>'first_name', 
+    new.raw_user_meta_data->>'last_name', 
+    new.raw_user_meta_data->>'avatar_url',
+    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1) || '_' || substr(new.id::text, 1, 4))
+  );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql security definer;
@@ -229,18 +249,23 @@ BEGIN
       RAISE EXCEPTION 'Invalid role assignment';
     END IF;
 
-    UPDATE public.profiles SET is_verified = true, role = NEW.entity_type::user_role WHERE id = NEW.user_id;
-
     IF NEW.entity_type = 'admin' THEN
       RAISE EXCEPTION 'Cannot promote to Admin via verification request';
     END IF;
+
+    UPDATE public.profiles 
+    SET is_verified = true, 
+        role = NEW.entity_type::user_role,
+        is_guide = (NEW.entity_type = 'guide'),
+        is_admin = (NEW.entity_type = 'admin')
+    WHERE id = NEW.user_id;
 
     IF NEW.entity_type = 'guide' THEN
       INSERT INTO public.guides (id, is_available) VALUES (NEW.user_id, true)
       ON CONFLICT (id) DO NOTHING;
     END IF;
   ELSIF NEW.status = 'rejected' THEN
-    UPDATE public.profiles SET is_verified = false WHERE id = NEW.user_id;
+    UPDATE public.profiles SET is_verified = false, is_guide = false WHERE id = NEW.user_id;
   END IF;
   RETURN NEW;
 END;
@@ -286,8 +311,11 @@ CREATE POLICY "Public profiles are viewable" ON public.profiles FOR SELECT USING
 CREATE OR REPLACE FUNCTION public.prevent_sensitive_profile_update()
 RETURNS trigger AS $$
 BEGIN
-  IF NEW.role <> OLD.role OR NEW.is_verified <> OLD.is_verified THEN
-    RAISE EXCEPTION 'You cannot change role or verification status';
+  IF NEW.role <> OLD.role 
+     OR NEW.is_verified <> OLD.is_verified 
+     OR NEW.is_guide <> OLD.is_guide 
+     OR NEW.is_admin <> OLD.is_admin THEN
+    RAISE EXCEPTION 'You cannot change role, verification status, or admin/guide flags';
   END IF;
   RETURN NEW;
 END;

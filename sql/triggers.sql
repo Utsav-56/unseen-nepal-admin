@@ -2,8 +2,14 @@
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
+  INSERT INTO public.profiles (id, first_name, last_name, avatar_url, username)
+  VALUES (
+    new.id, 
+    new.raw_user_meta_data->>'first_name', 
+    new.raw_user_meta_data->>'last_name', 
+    new.raw_user_meta_data->>'avatar_url',
+    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1) || '_' || substr(new.id::text, 1, 4))
+  );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql security definer;
@@ -21,18 +27,23 @@ BEGIN
       RAISE EXCEPTION 'Invalid role assignment';
     END IF;
 
-    UPDATE public.profiles SET is_verified = true, role = NEW.entity_type::user_role WHERE id = NEW.user_id;
-
     IF NEW.entity_type = 'admin' THEN
       RAISE EXCEPTION 'Cannot promote to Admin via verification request';
     END IF;
+
+    UPDATE public.profiles 
+    SET is_verified = true, 
+        role = NEW.entity_type::user_role,
+        is_guide = (NEW.entity_type = 'guide'),
+        is_admin = (NEW.entity_type = 'admin')
+    WHERE id = NEW.user_id;
 
     IF NEW.entity_type = 'guide' THEN
       INSERT INTO public.guides (id, is_available) VALUES (NEW.user_id, true)
       ON CONFLICT (id) DO NOTHING;
     END IF;
   ELSIF NEW.status = 'rejected' THEN
-    UPDATE public.profiles SET is_verified = false WHERE id = NEW.user_id;
+    UPDATE public.profiles SET is_verified = false, is_guide = false WHERE id = NEW.user_id;
   END IF;
   RETURN NEW;
 END;

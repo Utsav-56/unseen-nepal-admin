@@ -63,7 +63,7 @@ class StoryService extends SupabaseService<Story> {
         return true;
     }
 
-    
+
 
     /**
      * Add a comment to a story

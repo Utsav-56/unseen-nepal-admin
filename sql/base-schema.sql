@@ -15,13 +15,28 @@ CREATE TYPE application_status AS ENUM ('approved', 'rejected');
 -- TABLES
 
 -- Profiles: Extends Supabase Auth.users
+-- Security: Users cannot change their own 'role', 'is_verified', 'is_guide', or 'is_admin' status.
 CREATE TABLE public.profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  full_name text NOT NULL,
+  first_name text,
+  middle_name text,
+  last_name text,
+  username text UNIQUE,
+  phone_number text,
+  emergency_contact text,
   avatar_url text,
   role user_role DEFAULT 'tourist' NOT NULL,
+  
+  onboarding_completed boolean DEFAULT false NOT NULL,
+  preferences text[] DEFAULT '{}',
+  home_location geography(POINT, 4326),
+
   is_verified boolean DEFAULT false NOT NULL,
-  created_at timestamptz DEFAULT now()
+  is_guide boolean DEFAULT false NOT NULL,
+  is_admin boolean DEFAULT false NOT NULL,
+  
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 -- Verification Requests: The "Trust" engine
@@ -147,7 +162,8 @@ CREATE OR REPLACE FUNCTION public.find_guides_for_destination(
 )
 RETURNS TABLE (
   guide_id uuid,
-  full_name text,
+  first_name text,
+  last_name text,
   avatar_url text,
   bio GFM,
   hourly_rate numeric,
@@ -161,7 +177,8 @@ BEGIN
   RETURN QUERY
   SELECT
     p.id,
-    p.full_name,
+    p.first_name,
+    p.last_name,
     p.avatar_url,
     g.bio,
     g.hourly_rate,
