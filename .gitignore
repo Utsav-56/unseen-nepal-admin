@@ -24,7 +24,13 @@
 .DS_Store
 *.pem
 
+*_DELIVERY_SUMMARY.md
 DELIVERY_SUMMARY.md
+TESTING_*.md
+benchmark-results/
+__tests__/
+__benchmarks__/
+benchmark-results/
 
 # debug
 npm-debug.log*
